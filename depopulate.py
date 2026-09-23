@@ -38,11 +38,12 @@ def evaluate(comps):
             raise SyntaxError("Invalid Syntax")
         comps[index-1] = operator(op, first, second)
 
-    out = str(comps[0])
-    if is_valid_string(out):
-        out = out.replace("'", "")
-        out = out.replace('"', "")
-        return f"'{out}'"
+    out = comps[0]
+    if type(out).__name__ == "str":
+        if is_valid_string(out):
+            out = out.replace("'", "")
+            out = out.replace('"', "")
+            return f"'{out}'"
     return out
 
-print(evaluate(raw("10 + 20 * 10 * '  Helo'")))
+print(evaluate(raw("10 + 20 * 10 + 'H'")))

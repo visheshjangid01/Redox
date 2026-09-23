@@ -1,16 +1,12 @@
 """
-To split components of a block into raw elements/components
+splits components of a block into raw elements/components
 """
-
-def raw(line: str) -> list:
-    p1 = 0
-    p2 = 0
-    symbols = ['>', '<', '=', '-', '+', ':', '|', '/', '%', '!', '*', ',']
+def splitter(line: str, invalid: list) -> list:
+    p1, p2, char_count, bracket_level = 0, 0, 0, 0
     comment = "#"
+    symbols = ['>', '<', '=', '-', '+', ':', '|', '/', '%', '!', '*', ',']
     comps = []
     is_string = False
-    char_count = 0
-    bracket_level = 0
     temp_op = ''
     while p2 < len(line):
         char = line[p2]
@@ -25,8 +21,8 @@ def raw(line: str) -> list:
                     char_count = 0
                     comps.append(line[p1:p2])
                     p1 = p2
-                if line[p2-1].isalnum() and char != '{':
-                    comps.append(comps.pop(-1)+"^")
+                if line[p2 - 1].isalnum() and char != '{':
+                    comps.append(comps.pop(-1) + "^")
 
                 p2 += 1
                 continue
@@ -76,5 +72,18 @@ def raw(line: str) -> list:
         p2 += 1
     if char_count > 0:
         comps.append(line[p1:])
+    for comp in comps:
+        if comp in invalid:
+            raise SyntaxError(f"Invalid character {comp}")
     return comps
 
+def raw(line: str) -> list:
+    invalid = [',']
+    return splitter(line, invalid)
+
+def bracket(line: str) -> list:
+    invalid = [
+        # Operators
+        '=>', '->', ';'
+    ]
+    return splitter(line, invalid)
