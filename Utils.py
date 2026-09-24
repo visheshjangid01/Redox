@@ -125,7 +125,7 @@ class Parser:
         # If its an assignment operator it will assign the value and return None as an indicator
         if isinstance(first, str):
             if self.define_var(first, value=second, op=op, env=env):
-                return "defined*"
+                return None
 
         t1, t2 = type(first), type(second)
 
