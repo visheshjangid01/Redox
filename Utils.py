@@ -1,25 +1,37 @@
 import re, json
-from reserved import operators
+from time import struct_time
+
+from reserved import Operators
 from memory import glob, Env
 
+"""
+- val: convert string values to their proper datatypes
+- brackets: convert string values to 
+"""
 class Parser:
-
     FLOAT_RE = re.compile(r"-?\d+\.\d+")
     INT_RE = re.compile(r"-?\d+")
     # Starts with alphabet then can contain alphanum, - and _
-    VAR_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
+    VAR_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
+    FUNC_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*\^$")
 
     BOOLEAN_MAP = {
         "true": True, "false": False, "null": None,
         "t": True, "f": False, "n": None
     }
 
-    def val(self, value, env=glob):
+    NONE_MAP = ['None', 'none', 'null', 'nil' ]
+
+    def val(self, value, next_value):
         if not isinstance(value, str):
             return value
 
-        if value.startswith("'") or value.startswith('"'):
+        # Does nothing if value is a string or a variable
+        if Tools.contains(value, '"','"') or Tools.contains(value, "'","'")  or value.startswith("$"):
             return value
+
+        if value in self.NONE_MAP:
+            return None
 
         if value in self.BOOLEAN_MAP:
             return self.BOOLEAN_MAP[value]
@@ -30,22 +42,84 @@ class Parser:
         if self.INT_RE.fullmatch(value):
             return int(value)
 
+        if self.FUNC_RE.match(value):
+            fields = self.brackets(next_value, '^')
+            return fields
+
         if self.VAR_RE.match(value):
-            return self.val(env.get_var(value))
-
-        if value.startswith("{") and value.endswith("}"):
-            return json.loads(value)
-
-        if value.startswith("[") and value.endswith("]"):
-
-            return [self.val(item) for item in value[1:-1].split(",")]
-
-        return None
+            return f"${value}"
 
 
-    def operator(self, op, first, second):
-        first = self.val(first)
-        second = self.val(second)
+        if Tools.contains(value, '{', '}'):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                return self.brackets(value, '{}')
+
+        if Tools.contains(value, '[', ']'):
+            return self.brackets(value, '[]')
+
+        if  Tools.contains(value, '(', ')'):
+            return self.brackets(value, '()')
+
+        raise ValueError(f"Invalid value type: {value}")
+
+    @staticmethod
+    def brackets( value: str, bracket_type: str):
+        line = value[1:-1]
+        comps = Splitter().bracket(line)
+        block, values = [], []
+        for comp in comps:
+            if comp == ',':
+                values.append(Depopulate.evaluate(block))
+                block = []
+                continue
+            block.append(comp)
+        else:
+            values.append(Depopulate.evaluate(block))
+        match bracket_type:
+            case "[]":
+                return values
+            case "{}":
+                return set(values)
+            case "()":
+                if len(values) == 1:
+                    return values[0]
+                return tuple(values)
+            case "^": # Special case for function brackets
+                return tuple(values)
+            case _:
+                return values
+
+    def define_var(self, name: str, value, op: str, env: Env) -> bool:
+        if not name.startswith("$"):
+            return False
+        if op in Operators.assignment:
+            if op == "->":
+                env.set_var(name, value)
+            elif op == "=>":
+                env.set_var(name, value, False)
+            else:
+                if op == "-->":
+                    op = "-"
+                else:
+                    op = op[:-1]
+                value = self.operator(op, name, value)
+                env.set_var(name, value)
+            return True
+        return False
+
+    def operator(self, op: str, first, second, env=glob):
+
+        # No longer relevant as value-type is handled byt splitter itself
+        # first = self.val(first)
+        # second = self.val(second)
+        # if isinstance(zero, str):
+
+        # If its an assignment operator it will assign the value and return None as an indicator
+        if isinstance(first, str):
+            if self.define_var(first, value=second, op=op, env=env):
+                return "defined*"
 
         t1, t2 = type(first), type(second)
 
@@ -162,32 +236,34 @@ class Splitter:
         comment = "#"
         symbols = ['>', '<', '=', '-', '+', ':', '|', '/', '%', '!', '*', ',']
         comps = []
-        is_string = False
+        quote = None # to detect and build string
         temp_op = ''
         while p2 < len(line):
+
             char = line[p2]
-            if not is_string:
+            if not quote:
                 if char == comment:
                     break
                 # increase bracket level and split if not
                 if char in ['(', '{', '[']:
-                    bracket_level += 1
                     # " nums(", " ((", "nums{}"
-                    if char_count > 0:
+                    if char_count > 0 and bracket_level == 0:
                         char_count = 0
                         comps.append(line[p1:p2])
                         p1 = p2
                     if line[p2 - 1].isalnum() and char != '{':
-                        comps.append(comps.pop(-1) + "^")
 
+                        if comps:
+                            comps.append(comps.pop(-1) + "^")
                     p2 += 1
+                    bracket_level += 1
                     continue
                 elif char in [')', '}', ']']:
                     bracket_level -= 1
                     p2 += 1
                     continue
 
-            if not is_string and bracket_level == 0:
+            if not quote and bracket_level == 0:
                 # ignore comments
                 if char == comment:
                     break
@@ -223,15 +299,34 @@ class Splitter:
 
             if char.isalnum():
                 char_count += 1
-            elif char == "'" or char == '"':
-                is_string = not is_string
+            elif char in ('"', "'"):
+                if char == quote:
+                    quote = None
             p2 += 1
+
         if char_count > 0:
             comps.append(line[p1:])
-        for comp in comps:
+
+        out = []
+        skip = False
+        for i, comp in enumerate(comps, start=1):
+            if skip:
+                skip = False
+                continue
+
             if comp in invalid:
-                raise SyntaxError(f"Invalid character {comp}")
-        return comps
+                raise SyntaxError(f"Invalid character: {comp}")
+            try:
+                if comp.endswith("^"):
+                    out.append(comp)
+                    skip = True
+                out.append(Parser().val(comp, comps[i]))
+            except ValueError:
+                out.append(comp)
+            except IndexError:
+                out.append(Parser().val(comp, None))
+
+        return out
 
     def raw(self, line: str) -> list:
         invalid = [',']
@@ -240,16 +335,20 @@ class Splitter:
     def bracket(self, line: str) -> list:
         invalid = [
             # Operators
-            '=>', '->', ';'
+            '=>', '->', ':', ''
         ]
         return self.splitter(line, invalid)
-
+"""
+Methods:
+- Order: gives correct order of operators to be solved
+- is_valid_string: Checks if it is a valid string component
+"""
 class Tools:
     @staticmethod
     def order(comps):
         temp = comps.copy()
         out = []
-        for level, ops in operators.items():
+        for level, ops in Operators().all.items():
             for item in temp:
                 if item in ops:
                     temp.remove(item)
@@ -272,10 +371,18 @@ class Tools:
 
         return not is_bracketed and has_quote
 
+    @staticmethod
+    def contains(value: str, start, end) -> bool:
+        return value.startswith(start) and value.endswith(end)
 
-
-    def evaluate(self, comps):
-        od = self.order(comps)
+"""
+Methods:
+- evaluate: operators in proper order provided by order method in Tools class
+"""
+class Depopulate:
+    @staticmethod
+    def evaluate(comps):
+        od = Tools.order(comps)
         while len(od) > 0:
             op = od.pop(0)
             index = comps.index(op)
@@ -287,10 +394,16 @@ class Tools:
 
         out = comps[0]
         if type(out).__name__ == "str":
-            if self.is_valid_string(out):
+            if Tools.is_valid_string(out):
                 out = out.replace("'", "")
                 out = out.replace('"', "")
                 return f"'{out}'"
         return out
 
-    print(evaluate(Splitter().raw("10 + 20 * 10 + 'H'")))
+print("------------- Redox --------------")
+while True:
+    user = input(">>> ")
+    if user == "exit":
+        break
+
+print(Depopulate.evaluate("c"))
