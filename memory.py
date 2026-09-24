@@ -39,14 +39,14 @@ class Env:
             if not self.parent:
                 raise ValueError("Variable not defined!")
             else:
-                # return self.parent.get_var(name)
-                return id(self.parent)
+                return self.parent.get_var(name)
+                # return id(self.parent)
 
     def set_func(self, name, line_no):
         if not self.get_var(name):
             self.functions[name] = line_no
         else:
-            raise ValueError("Function already defined!")
+            raise KeyError("Function already defined!")
 
     def get_func(self, name):
         if name in self.functions:

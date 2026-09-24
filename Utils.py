@@ -1,6 +1,7 @@
 import re, json
 from time import struct_time
 
+import reserved
 from reserved import Operators
 from memory import glob, Env
 
@@ -22,7 +23,7 @@ class Parser:
 
     NONE_MAP = ['None', 'none', 'null', 'nil' ]
 
-    def val(self, value, next_value):
+    def val(self, value, next_value=None, env=glob):
         if not isinstance(value, str):
             return value
 
@@ -44,11 +45,15 @@ class Parser:
 
         if self.FUNC_RE.match(value):
             fields = self.brackets(next_value, '^')
-            return fields
+            if value == "out^":
+                print(*fields)
+                return 'None^'
+            return globals()[value](*fields)
 
         if self.VAR_RE.match(value):
-            return f"${value}"
-
+            if next_value in Operators.assignment:
+                return "$" + value
+            return env.get_var(value)
 
         if Tools.contains(value, '{', '}'):
             try:
@@ -62,7 +67,7 @@ class Parser:
         if  Tools.contains(value, '(', ')'):
             return self.brackets(value, '()')
 
-        raise ValueError(f"Invalid value type: {value}")
+        return value
 
     @staticmethod
     def brackets( value: str, bracket_type: str):
@@ -94,6 +99,7 @@ class Parser:
     def define_var(self, name: str, value, op: str, env: Env) -> bool:
         if not name.startswith("$"):
             return False
+        name = name[1:]
         if op in Operators.assignment:
             if op == "->":
                 env.set_var(name, value)
@@ -104,7 +110,7 @@ class Parser:
                     op = "-"
                 else:
                     op = op[:-1]
-                value = self.operator(op, name, value)
+                value = self.operator(op, env.get_var(name), value)
                 env.set_var(name, value)
             return True
         return False
@@ -300,7 +306,9 @@ class Splitter:
             if char.isalnum():
                 char_count += 1
             elif char in ('"', "'"):
-                if char == quote:
+                if quote is None:
+                    quote = char
+                elif char == quote:
                     quote = None
             p2 += 1
 
@@ -316,16 +324,12 @@ class Splitter:
 
             if comp in invalid:
                 raise SyntaxError(f"Invalid character: {comp}")
-            try:
-                if comp.endswith("^"):
-                    out.append(comp)
-                    skip = True
-                out.append(Parser().val(comp, comps[i]))
-            except ValueError:
-                out.append(comp)
-            except IndexError:
-                out.append(Parser().val(comp, None))
-
+            next_comp = comps[i] if i < len(comps) else None
+            value = Parser().val(comp, next_comp)
+            if value != "None^":
+                out.append(value)
+            if comp.endswith("^"):
+                skip = True
         return out
 
     def raw(self, line: str) -> list:
@@ -349,7 +353,7 @@ class Tools:
         temp = comps.copy()
         out = []
         for level, ops in Operators().all.items():
-            for item in temp:
+            for item in list(temp):
                 if item in ops:
                     temp.remove(item)
                     out.append(item)
@@ -382,6 +386,8 @@ Methods:
 class Depopulate:
     @staticmethod
     def evaluate(comps):
+        if not comps:
+            return None
         od = Tools.order(comps)
         while len(od) > 0:
             op = od.pop(0)
@@ -400,10 +406,11 @@ class Depopulate:
                 return f"'{out}'"
         return out
 
+
 print("------------- Redox --------------")
+# print(Splitter().raw("a"))
 while True:
     user = input(">>> ")
+    Depopulate.evaluate(Splitter().raw(user))
     if user == "exit":
         break
-
-print(Depopulate.evaluate("c"))
