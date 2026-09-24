@@ -3,6 +3,6 @@ print("------------- Redox --------------")
 # print(Splitter().raw("a"))
 while True:
     user = input(">>> ")
-    Depopulate.evaluate(Splitter().raw(user))
+    Depopulate.evaluate(Depopulate().all(user))
     if user == "exit":
         break

@@ -72,7 +72,7 @@ class Parser:
     @staticmethod
     def brackets( value: str, bracket_type: str):
         line = value[1:-1]
-        comps = Splitter().bracket(line)
+        comps = Depopulate().bracket(line)
         block, values = [], []
         for comp in comps:
             if comp == ',':
@@ -237,7 +237,7 @@ class Splitter:
     splits components of a block into raw elements/components
     """
     @staticmethod
-    def splitter(line: str, invalid: list) -> list:
+    def split(line: str, invalid: list) -> list:
         p1, p2, char_count, bracket_level = 0, 0, 0, 0
         comment = "#"
         symbols = ['>', '<', '=', '-', '+', ':', '|', '/', '%', '!', '*', ',']
@@ -315,33 +315,10 @@ class Splitter:
         if char_count > 0:
             comps.append(line[p1:])
 
-        out = []
-        skip = False
-        for i, comp in enumerate(comps, start=1):
-            if skip:
-                skip = False
-                continue
+        return comps
 
-            if comp in invalid:
-                raise SyntaxError(f"Invalid character: {comp}")
-            next_comp = comps[i] if i < len(comps) else None
-            value = Parser().val(comp, next_comp)
-            if value != "None^":
-                out.append(value)
-            if comp.endswith("^"):
-                skip = True
-        return out
 
-    def raw(self, line: str) -> list:
-        invalid = [',']
-        return self.splitter(line, invalid)
 
-    def bracket(self, line: str) -> list:
-        invalid = [
-            # Operators
-            '=>', '->', ':', ''
-        ]
-        return self.splitter(line, invalid)
 """
 Methods:
 - Order: gives correct order of operators to be solved
@@ -384,6 +361,36 @@ Methods:
 - evaluate: operators in proper order provided by order method in Tools class
 """
 class Depopulate:
+    invalids = [',']
+
+    def all(self, line: str, invalid=None) -> list:
+        if invalid is None:
+            invalid = self.invalids
+        comps = Splitter().split(line, invalid)
+        out = []
+        skip = False
+        for i, comp in enumerate(comps, start=1):
+            if skip:
+                skip = False
+                continue
+
+            if comp in invalid:
+                raise SyntaxError(f"Invalid character: {comp}")
+            next_comp = comps[i] if i < len(comps) else None
+            value = Parser().val(comp, next_comp)
+            if value != "None^":
+                out.append(value)
+            if comp.endswith("^"):
+                skip = True
+        return out
+
+    def bracket(self, line: str) -> list:
+        invalid = [
+            # Operators
+            '=>', '->', ':', ''
+        ]
+        return self.all(line, invalid)
+
     @staticmethod
     def evaluate(comps):
         if not comps:
@@ -405,5 +412,3 @@ class Depopulate:
                 out = out.replace('"', "")
                 return f"'{out}'"
         return out
-
-
