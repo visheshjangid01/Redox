@@ -1,15 +1,13 @@
 import re, json
-from time import struct_time
-
-import reserved
-from reserved import Operators
-from memory import glob, Env
-
-"""
-- val: convert string values to their proper datatypes
-- brackets: convert string values to 
-"""
+from utils.tools import Tools
+from utils.reserved import Operators
+from memory import Env, glob
 class Parser:
+    """
+    - val: convert string values to their proper datatypes
+    - brackets: convert string values to
+    """
+
     FLOAT_RE = re.compile(r"-?\d+\.\d+")
     INT_RE = re.compile(r"-?\d+")
     # Starts with alphabet then can contain alphanum, - and _
@@ -71,6 +69,7 @@ class Parser:
 
     @staticmethod
     def brackets( value: str, bracket_type: str):
+        from utils.depopulate import Depopulate
         line = value[1:-1]
         comps = Depopulate().bracket(line)
         block, values = [], []
@@ -231,184 +230,3 @@ class Parser:
                 raise SyntaxError(f"Unknown operator {op}")
 
         raise TypeError(f"Unsupported '{op}' operation between {t1.__name__} and {t2.__name__}")
-
-class Splitter:
-    """
-    splits components of a block into raw elements/components
-    """
-    @staticmethod
-    def split(line: str, invalid: list) -> list:
-        p1, p2, char_count, bracket_level = 0, 0, 0, 0
-        comment = "#"
-        symbols = ['>', '<', '=', '-', '+', ':', '|', '/', '%', '!', '*', ',']
-        comps = []
-        quote = None # to detect and build string
-        temp_op = ''
-        while p2 < len(line):
-
-            char = line[p2]
-            if not quote:
-                if char == comment:
-                    break
-                # increase bracket level and split if not
-                if char in ['(', '{', '[']:
-                    # " nums(", " ((", "nums{}"
-                    if char_count > 0 and bracket_level == 0:
-                        char_count = 0
-                        comps.append(line[p1:p2])
-                        p1 = p2
-                    if line[p2 - 1].isalnum() and char != '{':
-
-                        if comps:
-                            comps.append(comps.pop(-1) + "^")
-                    p2 += 1
-                    bracket_level += 1
-                    continue
-                elif char in [')', '}', ']']:
-                    bracket_level -= 1
-                    p2 += 1
-                    continue
-
-            if not quote and bracket_level == 0:
-                # ignore comments
-                if char == comment:
-                    break
-
-                # break on space, ignore if no text behind
-                if char == " ":
-                    if char_count > 0:
-                        comps.append(line[p1:p2])
-                        char_count = 0
-                    p1 = p2 + 1
-                    p2 += 1
-                    continue
-
-                loop_executed = False
-                # build the operator
-                while char in symbols and p2 < len(line):
-                    loop_executed = True
-                    temp_op += char
-                    if char_count > 0:
-                        comps.append(line[p1:p2])
-                        char_count = 0
-                    p2 += 1
-                    try:
-                        char = line[p2]
-                    except IndexError:
-                        char = ''
-                # insert the operator in components once the loop end
-                if loop_executed:
-                    comps.append(temp_op)
-                    temp_op = ''
-                    p1 = p2
-                    continue
-
-            if char.isalnum():
-                char_count += 1
-            elif char in ('"', "'"):
-                if quote is None:
-                    quote = char
-                elif char == quote:
-                    quote = None
-            p2 += 1
-
-        if char_count > 0:
-            comps.append(line[p1:])
-
-        return comps
-
-
-
-"""
-Methods:
-- Order: gives correct order of operators to be solved
-- is_valid_string: Checks if it is a valid string component
-"""
-class Tools:
-    @staticmethod
-    def order(comps):
-        temp = comps.copy()
-        out = []
-        for level, ops in Operators().all.items():
-            for item in list(temp):
-                if item in ops:
-                    temp.remove(item)
-                    out.append(item)
-                    continue
-        return out
-
-    @staticmethod
-    def is_valid_string(value: str) -> bool:
-        if not value:
-            return False
-
-        is_bracketed = (
-                (value.startswith("[") and value.endswith("]")) or
-                (value.startswith("{") and value.endswith("}")) or
-                (value.startswith("(") and value.endswith(")"))
-        )
-
-        has_quote = "'" in value or '"' in value
-
-        return not is_bracketed and has_quote
-
-    @staticmethod
-    def contains(value: str, start, end) -> bool:
-        return value.startswith(start) and value.endswith(end)
-
-"""
-Methods:
-- evaluate: operators in proper order provided by order method in Tools class
-"""
-class Depopulate:
-    invalids = [',']
-
-    def all(self, line: str, invalid=None) -> list:
-        if invalid is None:
-            invalid = self.invalids
-        comps = Splitter().split(line, invalid)
-        out = []
-        skip = False
-        for i, comp in enumerate(comps, start=1):
-            if skip:
-                skip = False
-                continue
-
-            if comp in invalid:
-                raise SyntaxError(f"Invalid character: {comp}")
-            next_comp = comps[i] if i < len(comps) else None
-            value = Parser().val(comp, next_comp)
-            if value != "None^":
-                out.append(value)
-            if comp.endswith("^"):
-                skip = True
-        return out
-
-    def bracket(self, line: str) -> list:
-        invalid = [
-            # Operators
-            '=>', '->', ':', ''
-        ]
-        return self.all(line, invalid)
-
-    @staticmethod
-    def evaluate(comps):
-        if not comps:
-            return None
-        od = Tools.order(comps)
-        while len(od) > 0:
-            op = od.pop(0)
-            index = comps.index(op)
-            try:
-                first, second = comps.pop(index - 1), comps.pop(index)
-            except IndexError:
-                raise SyntaxError("Invalid Syntax")
-            comps[index-1] = Parser().operator(op, first, second)
-
-        out = comps[0]
-        if type(out).__name__ == "str":
-            if Tools.is_valid_string(out):
-                out = out.replace("'", "")
-                out = out.replace('"', "")
-                return f"'{out}'"
-        return out

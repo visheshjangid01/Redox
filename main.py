@@ -1,4 +1,4 @@
-from Utils import Depopulate, Splitter
+from utils.depopulate import Depopulate
 print("------------- Redox --------------")
 # print(Splitter().raw("a"))
 while True:
