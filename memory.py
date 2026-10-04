@@ -1,3 +1,6 @@
+from sys import prefix
+
+
 class Env:
     mutable = {}
     immutable = {}
@@ -57,4 +60,17 @@ class Env:
             else:
                 return self.parent.get_func(name)
 
+class Block:
+    def __init__(self, header, parent=None, previous=None, env=None):
+        self.header = header
+        self.parent = parent
+        self.previous = previous
+        self.env = Env(env)
+        self.prefix = None
+        self.ended = False
+        self.body = []
+
+    def add(self, line):
+        self.body.append(line)
+        return True
 glob = Env()

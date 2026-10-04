@@ -13,4 +13,4 @@ class Operators:
 
     relational = ["=", "<", ">", ">=", "<=", "|", "&", "!=", "!"]
 
-keywords = ['loop', 'for', 'while', 'import', 'from']
+keywords = ['loop', 'for', 'while', 'import', 'from', 'if', 'elseif', 'else']

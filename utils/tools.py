@@ -42,16 +42,27 @@ class Splitter:
     splits components of a block into raw elements/components
     """
     @staticmethod
-    def split(line: str, invalid: list) -> list:
+    def split(line: str) -> list:
         p1, p2, char_count, bracket_level = 0, 0, 0, 0
         comment = "#"
         symbols = ['>', '<', '=', '-', '+', ':', '|', '/', '%', '!', '*', ',']
         comps = []
         quote = None # to detect and build string
+        is_start = True
         temp_op = ''
         while p2 < len(line):
 
             char = line[p2]
+            if is_start:
+                if char == ' ':
+                    p2 += 1
+                    continue
+                else:
+                    is_start = False
+                    comps.append(line[:p2])
+                    if len(comps[0]) < 1:
+                        comps.pop(0)
+                    p1=p2
             if not quote:
                 if char == comment:
                     break
@@ -108,7 +119,7 @@ class Splitter:
                     p1 = p2
                     continue
 
-            if char.isalnum():
+            if char.isalnum() or char == "_":
                 char_count += 1
             elif char in ('"', "'"):
                 char_count += 1
@@ -122,3 +133,5 @@ class Splitter:
             comps.append(line[p1:])
 
         return comps
+
+# print(Splitter.split("  Hi",[]))
