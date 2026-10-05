@@ -1,7 +1,7 @@
 import re, json
-from utils.tools import Tools
+from utils.tools import Tools, Splitter
 from utils.reserved import Operators
-from memory import Env, glob
+from memory import Env, glob, Block
 class Parser:
     """
     - val: convert string values to their proper datatypes
@@ -230,3 +230,83 @@ class Parser:
                 raise SyntaxError(f"Unknown operator {op}")
 
         raise TypeError(f"Unsupported '{op}' operation between {t1.__name__} and {t2.__name__}")
+
+    @staticmethod
+    def line(lines: list):
+        result = []
+        env = Env(glob)
+        block = None
+        global_prev = None
+
+        for line in lines:
+            comps = Splitter().split(line)
+
+            if not comps:
+                continue
+
+            # Handle Block Closure
+            if block:
+                # Check if the line starts with whitespace tokens
+                is_indented = isinstance(comps[0], str) and comps[0].isspace()
+                pref = comps[0] if is_indented else ""
+
+                if not is_indented:
+                    block.ended = True
+                else:
+                    if not block.prefix:
+                        block.prefix = pref
+                    if len(pref) < len(block.prefix):
+                        block.ended = True
+
+                # Resolve potentially multiple nested blocks ending
+                while block and block.ended:
+                    if block.parent:
+                        block.parent.add(block)
+                    else:
+                        result.append(block)
+                        global_prev = block
+
+                    block = block.parent
+
+                    # Evaluate if the newly active parent block also ends on this line
+                    if block:
+                        if not is_indented:
+                            block.ended = True
+                        elif block.prefix and len(pref) < len(block.prefix):
+                            block.ended = True
+                        else:
+                            break
+
+                if block and is_indented and isinstance(comps[0], str) and comps[0].isspace():
+                    comps.pop(0)
+            elif comps and isinstance(comps[0], str) and comps[0].isspace():
+                comps.pop(0)
+
+            if isinstance(comps, list) and comps and comps[-1] == ":":
+                if block:
+                    current_prev = block.body[-1] if block.body else None
+                    block_env = Env(block.env)
+                else:
+                    current_prev = global_prev
+                    block_env = Env(env)
+
+                block = Block(comps, block, current_prev, block_env)
+                continue
+
+            if block:
+                block.add(comps)
+            else:
+                result.append(comps)
+                global_prev = comps
+
+        # Take care of  block or multiple blocks if there are any at end of file
+        while block:
+            block.ended = True
+            if block.parent:
+                block.parent.add(block)
+            else:
+                result.append(block)
+                global_prev = block
+            block = block.parent
+
+        return result

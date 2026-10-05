@@ -9,14 +9,17 @@ class Depopulate:
     """
     invalids = [',']
 
-    def all(self, line, invalid=None, env=glob, is_block=False) -> list:
-
+    def all(self, line, invalid=None, env=glob) -> list:
         if invalid is None:
             invalid = self.invalids
         comps=[]
         if isinstance(line, str):
             comps = Splitter().split(line)
 
+        if isinstance(comps, Block):
+            if comps.header[0] in ["if", "elseif", "else"]:
+                getattr(Keywords, "key_"+comps.header[0])(comps)
+            return []
         out = []
         skip = False
         for i, comp in enumerate(comps, start=1):
@@ -62,95 +65,95 @@ class Depopulate:
                 return f"'{out}'"
         return out
 
-    @staticmethod
-    def line(lines: list):
-        result = []
-        env = Env(glob)
-        block = None
-        global_prev = None
-
-        for line in lines:
-            comps = Splitter().split(line)
-
-            if not comps:
-                continue
-
-            # Handle Block Closure
-            if block:
-                # Check if the line starts with whitespace tokens
-                is_indented = isinstance(comps[0], str) and comps[0].isspace()
-                pref = comps[0] if is_indented else ""
-
-                if not is_indented:
-                    block.ended = True
-                else:
-                    if not block.prefix:
-                        block.prefix = pref
-                    if len(pref) < len(block.prefix):
-                        block.ended = True
-
-                # Resolve potentially multiple nested blocks ending
-                while block and block.ended:
-                    if block.parent:
-                        block.parent.add(block)
-                    else:
-                        result.append(block)
-                        global_prev = block
-
-                    block = block.parent
-
-                    # Evaluate if the newly active parent block also ends on this line
-                    if block:
-                        if not is_indented:
-                            block.ended = True
-                        elif block.prefix and len(pref) < len(block.prefix):
-                            block.ended = True
-                        else:
-                            break
-
-                if block and is_indented and isinstance(comps[0], str) and comps[0].isspace():
-                    comps.pop(0)
-            elif comps and isinstance(comps[0], str) and comps[0].isspace():
-                comps.pop(0)
-
-            if isinstance(comps, list) and comps and comps[-1] == ":":
-                if block:
-                    current_prev = block.body[-1] if block.body else None
-                    block_env = Env(block.env)
-                else:
-                    current_prev = global_prev
-                    block_env = Env(env)
-
-                block = Block(comps, block, current_prev, block_env)
-                continue
-
-            if block:
-                block.add(comps)
-            else:
-                result.append(comps)
-                global_prev = comps
-
-        # Take care of  block or multiple blocks if there are any at end of file
-        while block:
-            block.ended = True
-            if block.parent:
-                block.parent.add(block)
-            else:
-                result.append(block)
-                global_prev = block
-            block = block.parent
-
-        return result
+    def line(self, lines: list):
+        content = Parser.line(lines)
+        for l in content:
+            self.all(l)
 
 class Keywords:
     @staticmethod
-    def key_if(comps):
-        if comps.index("if") != 0:
-            raise SyntaxError("Invalid Syntax")
-        if comps.index(":") != len(comps) - 1:
-            raise SyntaxError("Invalid Syntax")
+    def key_if(block: Block):
         invalid = ["if", "else", "elseif", "func"] + Operators.assignment
-        if not Depopulate().all(comps[1:-1], invalid):
-            pass
+        condition = block.header[1:-1]
+        result = None
+        if block.parent:
+            result = Depopulate().all(condition, invalid, block.parent.env)
+        else:
+            result = Depopulate().all(condition, invalid)
+        if len(result) > 1:
+            raise SyntaxError("Invalid Syntax")
+        if result:
+            for line in block.body:
+                Depopulate().all(line, invalid, env=block.env)
+            block.mark()
+            return True
+        return False
+
+    def key_elseif(self, block: Block):
+        if not self.is_valid(["if", "elseif"], block):
+            raise SyntaxError("There must be a valid if or elseif before elseif")
+        if self.has_ran(["if", "elseif"],block):
+            return False
+        invalid = ["if", "else", "elseif", "elseif"] + Operators.assignment
+        condition = block.header[1:-1]
+        result = None
+        if block.parent:
+            result = Depopulate().all(condition, invalid, block.parent.env)
+        else:
+            result = Depopulate().all(condition, invalid)
+        if len(result) > 1:
+            raise SyntaxError("Invalid Syntax")
+        if result:
+            for line in block.body:
+                Depopulate().all(line, env=block.env)
+            block.mark()
+            return True
+        return False
+
+    def key_else(self, block: Block):
+        if len(block.header) != 2:
+            raise SyntaxError("Invalid Syntax")
+        if not self.is_valid(["if", "elseif"], block):
+            raise SyntaxError("There must be an if or elseif before else")
+        if self.has_ran(["if", "elseif"],block):
+            return False
+        for line in block.body:
+            Depopulate().all(line, env=block.env)
+            block.mark()
+        return True
+
+    @staticmethod
+    def block_exists(t, block: Block) -> bool:
+        current = block
+        while isinstance(current.previous, Block):
+            current = current.previous
+            if not isinstance(current, Block):
+                return False
+            if current.header[0] in t:
+                return True
+        return False
+
+    @staticmethod
+    def is_valid(t, block: Block):
+        if isinstance(block.previous, Block):
+            return False
+        if block.previous.header[0] in t:
+            return True
+        return False
+
+    @staticmethod
+    def has_ran(t, block: Block) -> bool:
+        current = block
+        while isinstance(current.previous, Block):
+            current = current.previous
+            if not isinstance(current, Block):
+                return False
+            if current.header[0] not in t:
+                return False
+            if current.header[0] == t[0] and not current.ran:
+                return False
+            if current.ran:
+                return True
+        return False
 
 # Depopulate.line(["  Hi", "  Hello  "])
