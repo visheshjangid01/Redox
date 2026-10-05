@@ -44,7 +44,12 @@ class Parser:
         if self.FUNC_RE.match(value):
             fields = self.brackets(next_value, '^')
             if value == "out^":
-                print(*fields)
+                cleaned = [
+                    # cleans off quotes from string components while printing them
+                    f[1:-1] if isinstance(f, str) and f.startswith("'") and f.endswith("'") else f 
+                    for f in fields
+                ]
+                print(*cleaned)
                 return 'None^'
             return globals()[value](*fields)
 
