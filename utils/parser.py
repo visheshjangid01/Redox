@@ -234,11 +234,11 @@ class Parser:
     @staticmethod
     def line(lines: list):
         result = []
-        env = Env(glob)
         block = None
         global_prev = None
 
         for line in lines:
+
             comps = Splitter().split(line)
 
             if not comps:
@@ -285,10 +285,10 @@ class Parser:
             if isinstance(comps, list) and comps and comps[-1] == ":":
                 if block:
                     current_prev = block.body[-1] if block.body else None
-                    block_env = Env(block.env)
+                    block_env = block.env
                 else:
                     current_prev = global_prev
-                    block_env = Env(env)
+                    block_env = glob
 
                 block = Block(comps, block, current_prev, block_env)
                 continue

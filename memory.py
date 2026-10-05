@@ -13,6 +13,9 @@ class Env:
         current = self
         while not current.find_var(name) and current.parent is not None:
             current = current.parent
+
+        if not current.find_var(name): # if nowhere to be found, go back to self
+            current = self
         if is_mutable:
             if name in current.immutable:
                 raise ValueError("Variable already defined!")

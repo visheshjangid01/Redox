@@ -1,6 +1,7 @@
-if a:
-    out(b)
-    if b:
-        out(lol)
-
-a+b
+a-> 12
+if a = 10:
+  out("First")
+elseif f:
+  out("Second")
+else:
+    out("Last")
