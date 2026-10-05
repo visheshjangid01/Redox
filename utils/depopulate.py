@@ -16,8 +16,10 @@ class Depopulate:
         if isinstance(comps, str):
             comps = Splitter().split(comps)
         elif isinstance(comps, Block):
-            if comps.header[0] in ["if", "elseif", "else"]:
+            if comps.header[0] in ["if", "elseif", "else", "loop"]:
                 getattr(Keywords, "key_"+comps.header[0])(comps)
+            if comps.header[0] in ["while", "for"]:
+                raise SyntaxError("Not a valid loop type")
             return []
         out = []
         skip = False
@@ -28,7 +30,7 @@ class Depopulate:
             if comp in invalid:
                 raise SyntaxError(f"Invalid character: {comp}")
             next_comp = comps[i] if i < len(comps) else None
-            value = Parser().val(comp, next_comp)
+            value = Parser().val(comp, next_comp, env=env)
             if value != "None^":
                 out.append(value)
             if comp.endswith("^"):
@@ -43,7 +45,7 @@ class Depopulate:
         return self.all(line, invalid)
 
     @staticmethod
-    def evaluate(comps):
+    def evaluate(comps, env=glob):
         if not comps:
             return None
         od = Tools.order(comps)
@@ -54,7 +56,7 @@ class Depopulate:
                 first, second = comps.pop(index - 1), comps.pop(index)
             except IndexError:
                 raise SyntaxError("Invalid Syntax")
-            comps[index-1] = Parser().operator(op, first, second)
+            comps[index-1] = Parser().operator(op, first, second, env=env)
 
         out = comps[0]
         if type(out).__name__ == "str":
@@ -73,22 +75,67 @@ class Depopulate:
 
 class Keywords:
     @staticmethod
+    def key_loop(block: Block):
+        if block.header[1] not in ["while", "for"]:
+            raise SyntaxError("Not a valid loop type")
+        if getattr(Keywords, "loop_"+block.header[1])(block):
+            return True
+        return False
+
+    @staticmethod
+    def loop_for(block: Block):
+        if not block.header[2]:
+            raise SyntaxError("No iterable component available")
+
+        parent_env = block.parent.env if block.parent else glob
+        iterables = Depopulate().evaluate(Depopulate().all(block.header[2], env=parent_env), env=parent_env)
+        if not isinstance(iterables, (list, tuple, set)):
+            raise SyntaxError("Non iterable component!")
+        if block.header[3] == ":":
+            for i in iterables:
+                for line in block.body:
+                    Depopulate.evaluate(Depopulate().all(line, env=block.env), env=block.env)
+        elif block.header[3] == "as":
+            if not Parser.VAR_RE.match(block.header[4]):
+                raise SyntaxError("Invalid Loop variable")
+            if block.header[5] != ":":
+                raise SyntaxError("Invalid Syntax")
+            env = block.parent.env if block.parent else glob
+
+            for item in iterables:
+                env.set_var(block.header[4], item)
+                for line in block.body:
+                    Depopulate.evaluate(Depopulate().all(line, env=block.env), env=block.env)
+        else:
+            raise SyntaxError("Invalid Syntax")
+
+    @staticmethod
+    def loop_while(block: Block):
+        invalid = ["if", "else", "elseif", "func"] + Operators.assignment
+        condition = block.header[2:-1]
+
+        while True:
+
+            raw_cond = Depopulate().all(condition, invalid, env=block.env)
+            result = Depopulate.evaluate(raw_cond, env=block.env)
+
+            if not result:
+                break
+
+            for line in block.body:
+                Depopulate.evaluate(Depopulate().all(line, env=block.env), env=block.env)
+        return True
+    @staticmethod
     def key_if(block: Block):
         invalid = ["if", "else", "elseif", "func"] + Operators.assignment
         condition = block.header[1:-1]
 
-        if block.parent:
-            raw_cond = Depopulate().all(condition, invalid, block.parent.env)
-        else:
-            raw_cond = Depopulate().all(condition, invalid)
-
-        # Fix 1 & 2: Evaluate the condition and remove the len() > 1 check
-        result = Depopulate.evaluate(raw_cond)
+        raw_cond = Depopulate().all(condition, invalid, env=block.env)
+        result = Depopulate.evaluate(raw_cond, env=block.env)
 
         if result:
             for line in block.body:
-                # Fix 3 & 4: Evaluate the executed body lines and drop the restrictive `invalid` list
-                Depopulate.evaluate(Depopulate().all(line, env=block.env))
+                Depopulate.evaluate(Depopulate().all(line, env=block.env), env=block.env)
             block.mark()
             return True
         return False
@@ -103,16 +150,12 @@ class Keywords:
         invalid = ["if", "else", "elseif", "elseif"] + Operators.assignment
         condition = block.header[1:-1]
 
-        if block.parent:
-            raw_cond = Depopulate().all(condition, invalid, block.parent.env)
-        else:
-            raw_cond = Depopulate().all(condition, invalid)
-
-        result = Depopulate.evaluate(raw_cond)
+        raw_cond = Depopulate().all(condition, invalid, env=block.env)
+        result = Depopulate.evaluate(raw_cond, env=block.env)
 
         if result:
             for line in block.body:
-                Depopulate.evaluate(Depopulate().all(line, env=block.env))
+                Depopulate.evaluate(Depopulate().all(line, env=block.env), env=block.env)
             block.mark()
             return True
         return False
@@ -127,8 +170,7 @@ class Keywords:
             return False
 
         for line in block.body:
-            # Fix 3: Evaluate the executed body lines
-            Depopulate.evaluate(Depopulate().all(line, env=block.env))
+            Depopulate.evaluate(Depopulate().all(line, env=block.env), env=block.env)
             block.mark()
         return True
 
