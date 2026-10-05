@@ -1,0 +1,25 @@
+# A quick tour of Redox
+
+name -> "Redox"     # mutable variable
+pi => 3.14          # constant (can't be reassigned)
+count -> 1
+count +> 4          # count is now 5
+
+out("hello from", name, pi, count)
+out(2 + 3 * 4, 7 // 2, "a" + 1)
+out([1, 2, 3] - [2])
+
+if count > 10:
+    out("big")
+elseif count = 5:
+    out("five!")
+else:
+    out("small")
+
+loop for [1, 2, 3] as i:
+    out("item", i)
+
+k -> 0
+loop while k < 3:
+    k +> 1
+    out("k is", k)

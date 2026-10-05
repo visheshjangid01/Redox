@@ -1,6 +1,3 @@
-from sys import prefix
-
-
 class Env:
     mutable = {}
     immutable = {}

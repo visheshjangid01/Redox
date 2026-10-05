@@ -1,7 +1,7 @@
-from utils.reserved import Operators, keywords
-from utils.tools import Splitter, Tools
-from utils.parser import Parser
-from memory import glob, Env, Block
+from .reserved import Operators, keywords
+from .tools import Splitter, Tools
+from .parser import Parser
+from ..memory import glob, Env, Block
 class Depopulate:
     """
     Methods:

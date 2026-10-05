@@ -1,7 +1,7 @@
 import re, json
-from utils.tools import Tools, Splitter
-from utils.reserved import Operators
-from memory import Env, glob, Block
+from .tools import Tools, Splitter
+from .reserved import Operators
+from ..memory import Env, glob, Block
 class Parser:
     """
     - val: convert string values to their proper datatypes
@@ -69,7 +69,7 @@ class Parser:
 
     @staticmethod
     def brackets( value: str, bracket_type: str):
-        from utils.depopulate import Depopulate
+        from .depopulate import Depopulate
         line = value[1:-1]
         comps = Depopulate().bracket(line)
         block, values = [], []
