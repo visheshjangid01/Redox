@@ -122,15 +122,6 @@ scripts/
 └── install.ps1     # build + install on Windows
 ```
 
-## Hacking on it
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-pytest
-```
-
-With the editable install, `redox` always runs your latest code. No rebuild needed until you want a new executable.
 
 If you don't want to install anything at all, you can run the code directly from the source directory. This will prompt you for a `Filepath:` (leave blank to open the REPL):
 
